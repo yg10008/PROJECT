@@ -1,4 +1,3 @@
-process.env.OPENCV_BIN_DIR = "C:\\Users\\trilo\\Desktop\\OPERATION\\BACKEND\\opencv\\build\\x64\\vc15\\bin";
 
 
 require("dotenv").config();

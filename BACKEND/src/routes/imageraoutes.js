@@ -3,6 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const axios = require('axios');
 const FormData = require('form-data');
+const { exec } = require('child_process'); 
 const Image = require('../models/image');
 
 const storage = multer.memoryStorage();
@@ -33,24 +34,43 @@ router.post("/upload", upload.single("image"), async (req, res) => {
 
         const imageUrl = response.data.data.url;
 
-        const engagementScore = 50; 
-        const flagged = false;
-        const reason = "Analysis not available";
-
-        const newImage = new Image({
-            institutionId: req.body.institutionId,
-            imageUrl,
-            analysisResult: {
+        // Trigger Python Analysis
+        exec(`python ./src/image-analysis/analysis.py "${imageUrl}"`, async (error, stdout) => {
+            let analysisResult = {
                 peopleCount: "N/A",
-                engagementScore,
-                flagged,
-                reason
+                engagementScore: 50,
+                flagged: false,
+                reason: "Analysis not available"
+            };
+
+            if (!error) {
+                try {
+                    const analysisData = JSON.parse(stdout.trim());
+                    analysisResult = {
+                        peopleCount: analysisData.peopleCount || "N/A",
+                        engagementScore: analysisData.engagementScore || 50,
+                        flagged: analysisData.flagged || false,
+                        reason: analysisData.reason || "Analysis completed"
+                    };
+                } catch (parseError) {
+                    console.error("Error parsing analysis result:", parseError.message);
+                }
             }
+
+            const newImage = new Image({
+                institutionId: req.body.institutionId,
+                imageUrl,
+                analysisResult
+            });
+
+            await newImage.save();
+
+            res.status(201).json({
+                message: "Image uploaded and analyzed successfully",
+                image: newImage
+            });
         });
 
-        await newImage.save();
-
-        res.status(201).json({ message: "Image uploaded successfully", image: newImage });
     } catch (error) {
         console.error('Error Details:', error.toJSON ? error.toJSON() : error.message);
         res.status(500).json({
@@ -90,6 +110,5 @@ router.get("/:id", async (req, res) => {
         });
     }
 });
-
 
 module.exports = router;
