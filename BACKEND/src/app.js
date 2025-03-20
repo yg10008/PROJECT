@@ -1,5 +1,3 @@
-
-
 require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
@@ -14,9 +12,11 @@ app.use(cors());
 
 const institutionRoutes = require("./routes/institution");
 const imageRoutes = require("./routes/imageraoutes");
+const authRoutes = require("./routes/userRoutes");
 
 app.use("/api/institutions", institutionRoutes);
 app.use("/api/images", imageRoutes);
+app.use("/api/auth", authRoutes);
 
 app.use((req, res) => {
     res.status(404).json({ message: "Route not found" });

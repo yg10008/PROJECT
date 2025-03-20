@@ -2,14 +2,15 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const axios = require('axios');
-const FormData = require('form-data');
-const { exec } = require('child_process'); 
+const { exec } = require('child_process');
 const Image = require('../models/image');
+const { userAuth } = require("../middleware/auth");
+const { roleAuth } = require("../middleware/roleAuth");
 
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-router.post("/upload", upload.single("image"), async (req, res) => {
+router.post("/upload", userAuth, upload.single("image"), async (req, res) => {
     try {
         const image = req.file;
 
@@ -23,10 +24,9 @@ router.post("/upload", upload.single("image"), async (req, res) => {
             return res.status(400).json({ message: "File size exceeds 5MB limit" });
         }
 
-        // Upload to ImgBB
         const formData = new FormData();
-        formData.append('image', image.buffer, { contentType: image.mimetype });
-        formData.append('key', process.env.IMGBB_API_KEY);
+        formData.append("image", image.buffer.toString('base64'));
+        formData.append('key',"583f2385696ff905a6fd751587bb8e75");
 
         const response = await axios.post('https://api.imgbb.com/1/upload', formData, {
             headers: formData.getHeaders(),
@@ -34,27 +34,22 @@ router.post("/upload", upload.single("image"), async (req, res) => {
 
         const imageUrl = response.data.data.url;
 
-        // Trigger Python Analysis
-        exec(`python ./src/image-analysis/analysis.py "${imageUrl}"`, async (error, stdout) => {
+        exec(`python ./src/image-analysis/analysis.py ${imageUrl}`, async (error, stdout, stderr) => {
             let analysisResult = {
-                peopleCount: "N/A",
-                engagementScore: 50,
-                flagged: false,
-                reason: "Analysis not available"
+                peopleCount: 0,
+                engagementScore: 0,
+                flagged: true,
+                reason: "Analysis failed"
             };
 
             if (!error) {
                 try {
-                    const analysisData = JSON.parse(stdout.trim());
-                    analysisResult = {
-                        peopleCount: analysisData.peopleCount || "N/A",
-                        engagementScore: analysisData.engagementScore || 50,
-                        flagged: analysisData.flagged || false,
-                        reason: analysisData.reason || "Analysis completed"
-                    };
+                    analysisResult = JSON.parse(stdout.trim());
                 } catch (parseError) {
-                    console.error("Error parsing analysis result:", parseError.message);
+                    console.error(`Error parsing analysis result: ${parseError.message}`);
                 }
+            } else {
+                console.error(`Python Analysis Error: ${error.message}`);
             }
 
             const newImage = new Image({
@@ -64,13 +59,10 @@ router.post("/upload", upload.single("image"), async (req, res) => {
             });
 
             await newImage.save();
+            console.log("🔹 Python Analysis Output:", analysisResult);
 
-            res.status(201).json({
-                message: "Image uploaded and analyzed successfully",
-                image: newImage
-            });
+            res.status(201).json({ message: "Image uploaded and analyzed successfully", image: newImage });
         });
-
     } catch (error) {
         console.error('Error Details:', error.toJSON ? error.toJSON() : error.message);
         res.status(500).json({
@@ -80,7 +72,7 @@ router.post("/upload", upload.single("image"), async (req, res) => {
     }
 });
 
-router.get("/", async (req, res) => {
+router.get("/", userAuth, roleAuth("admin"), async (req, res) => {
     try {
         const images = await Image.find(); 
         res.status(200).json(images);
@@ -93,7 +85,7 @@ router.get("/", async (req, res) => {
     }
 });
 
-router.get("/:id", async (req, res) => {
+router.get("/:id", userAuth, async (req, res) => {
     try {
         const image = await Image.findById(req.params.id);
 

@@ -1,36 +1,53 @@
+import sys
 import cv2
 import mediapipe as mp
-import requests
-import sys
 import json
+import requests
+from PIL import Image
+from io import BytesIO
+import numpy as np  # Ensure numpy is imported
 
 def analyze_image(image_url):
     try:
+        # Download Image
         response = requests.get(image_url)
-        image_array = np.frombuffer(response.content, np.uint8)
-        image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
+        response.raise_for_status()  # Ensure the request was successful
+        image_data = Image.open(BytesIO(response.content))
 
-        mp_face_detection = mp.solutions.face_detection
-        with mp_face_detection.FaceDetection(min_detection_confidence=0.5) as face_detection:
-            results = face_detection.process(cv2.cvtColor(image, cv2.COLOR_BGR2RGB))
+        # Convert Image for OpenCV Processing
+        image_rgb = cv2.cvtColor(np.array(image_data), cv2.COLOR_RGB2BGR)
 
-        people_count = len(results.detections) if results.detections else 0
-        engagement_score = people_count * 10  
-        flagged = people_count == 0  
-        reason = "No people detected" if flagged else "Normal"
+        # Initialize MediaPipe Pose Estimation
+        mp_pose = mp.solutions.pose
+        pose = mp_pose.Pose(static_image_mode=True)
 
-        result = {
+        # Pose Detection
+        results = pose.process(image_rgb)
+        people_count = 1 if results.pose_landmarks else 0
+        engagement_score = people_count * 50
+        flagged = people_count == 0
+        reason = "No individuals detected" if flagged else "Analysis successful"
+
+        return {
             "peopleCount": people_count,
             "engagementScore": engagement_score,
             "flagged": flagged,
             "reason": reason
         }
-
-        print(json.dumps(result))
-
+    
     except Exception as e:
-        print(json.dumps({"error": str(e)}))
+        return {
+            "peopleCount": 0,
+            "engagementScore": 0,
+            "flagged": True,
+            "reason": f"Analysis failed: {str(e)}"
+        }
 
 if __name__ == "__main__":
-    image_url = sys.argv[1]  
-    analyze_image(image_url)
+    if len(sys.argv) < 2:
+        print(json.dumps({"error": "No image URL provided"}))
+        sys.exit(1)
+
+    image_url = sys.argv[1]
+    result = analyze_image(image_url)
+    print(json.dumps(result))
