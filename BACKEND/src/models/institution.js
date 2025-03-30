@@ -1,46 +1,60 @@
-const mongoose = require("mongoose");
+const mongoose = require('mongoose');
 
-const InstitutionSchema = new mongoose.Schema({
-  name: { 
-    type: String,
-    required: true 
-  },
-  location: {
-    type: String, 
-    required: true 
-  },
-  courses: [{
-    name: { type: String, required: true },
-    duration: { type: String }
-  }],
-  infrastructure: {
-    classrooms: { 
-      type: Number, 
-      default: 0 
+const institutionSchema = new mongoose.Schema({
+    name: {
+        type: String,
+        required: true,
+        trim: true
     },
-    labs: { 
-      type: Number, 
-      default: 0 
+    address: {
+        street: String,
+        city: String,
+        state: String,
+        country: String,
+        zipCode: String
     },
-    libraries: { 
-      type: Boolean, 
-      default: false 
+    contactInfo: {
+        email: String,
+        phone: String,
+        website: String
+    },
+    type: {
+        type: String,
+        enum: ['school', 'college', 'university', 'training_center'],
+        required: true
+    },
+    status: {
+        type: String,
+        enum: ['active', 'inactive', 'pending'],
+        default: 'pending'
+    },
+    subscription: {
+        plan: {
+            type: String,
+            enum: ['free', 'basic', 'premium'],
+            default: 'free'
+        },
+        startDate: Date,
+        endDate: Date
+    },
+    settings: {
+        maxUsers: {
+            type: Number,
+            default: 5
+        },
+        maxStorage: {
+            type: Number,
+            default: 1000 // in MB
+        },
+        features: [{
+            type: String,
+            enum: ['image_analysis', 'performance_metrics', 'curriculum_management']
+        }]
     }
-  },
-  contact: {
-    phone: { 
-      type: String, 
-      match: /^[0-9]{10}$/ 
-    }, 
-    email: { 
-      type: String, 
-      match: /.+\@.+\..+/ 
-    }  
-  },
-  registeredAt: { 
-    type: Date, 
-    default: Date.now 
-  }
+}, {
+    timestamps: true
 });
 
-module.exports = mongoose.model("Institution", InstitutionSchema);
+const Institution = mongoose.model('Institution', institutionSchema);
+
+module.exports = Institution; 

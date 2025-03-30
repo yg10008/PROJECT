@@ -1,78 +1,136 @@
-const express = require("express");
-const { validateSignUpData } = require("../utils/validation");
-const { User } = require("../models/user");
-const { userAuth, adminAuth } = require("../middleware/auth");
-const bcrypt = require("bcrypt");
+const express = require('express');
+const router = express.Router();
+const User = require('../models/User');
+const { auth, checkRole } = require('../middleware/auth');
+const { logActivity, logError } = require('../utils/logger');
+const jwt = require('jsonwebtoken');
 
-const authRouter = express.Router();
-
-// SIGNUP ROUTE
-authRouter.post("/signup", async (req, res) => {
+// Register new user
+router.post('/register', async (req, res) => {
     try {
-        validateSignUpData(req);
+        const { name, email, password, role, institution } = req.body;
 
-        const { firstName, lastName, emailId, password, role } = req.body;
-
-        const existingUser = await User.findOne({ emailId });
+        // Check if user already exists
+        const existingUser = await User.findOne({ email });
         if (existingUser) {
-            return res.status(400).send("EMAIL_ALREADY_REGISTERED");
+            return res.status(400).json({ message: 'User already exists' });
         }
 
-        const user1 = new User({
-            firstName,
-            lastName,
+        // Create new user
+        const user = new User({
+            name,
+            email,
             password,
-            emailId,
-            role: role || "user"
+            role,
+            institution
         });
 
-        await user1.save();
-        res.send("USER_REGISTERED_SUCCESSFULLY");
-    } catch (err) {
-        res.status(400).send("ERROR_OCCURED_IN_STORING : " + err.message);
+        await user.save();
+
+        // Generate token
+        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+            expiresIn: '7d'
+        });
+
+        logActivity('User registered successfully', req);
+        res.status(201).json({ user, token });
+    } catch (error) {
+        logError(error, req);
+        res.status(500).json({ message: 'Error creating user' });
     }
 });
 
-// LOGIN ROUTE
-authRouter.post("/login", async (req, res) => {
+// Login user
+router.post('/login', async (req, res) => {
     try {
-        const { emailId, password } = req.body;
+        const { email, password } = req.body;
 
-        const user = await User.findOne({ emailId });
-
+        // Find user
+        const user = await User.findOne({ email });
         if (!user) {
-            throw new Error("INVALID_CREDENTIALS");
+            return res.status(401).json({ message: 'Invalid credentials' });
         }
 
-        const isPasswordValid = await user.getPasswordAuthentication(password);
-
-        if (isPasswordValid) {
-            const token = await user.getJWT();
-            res.cookie("token", token, {
-                expires: new Date(Date.now() + 8 * 3600000)
-            });
-            res.send("USER_LOGIN_SUCCESSFUL");
-        } else {
-            throw new Error("INVALID_CREDENTIALS");
+        // Check password
+        const isMatch = await user.comparePassword(password);
+        if (!isMatch) {
+            return res.status(401).json({ message: 'Invalid credentials' });
         }
-    } catch (err) {
-        res.status(411).send("ERROR_OCCURED_IN_LOGIN : " + err.message);
+
+        // Generate token
+        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+            expiresIn: '7d'
+        });
+
+        logActivity('User logged in successfully', req);
+        res.json({ user, token });
+    } catch (error) {
+        logError(error, req);
+        res.status(500).json({ message: 'Error logging in' });
     }
 });
 
-// LOGOUT ROUTE
-authRouter.post("/logout", async (req, res) => {
-    res.cookie("token", null, {
-        expires: new Date(Date.now())
-    });
-
-    res.send("LOGGED_OUT_SUCCESSFULLY");
+// Get user profile
+router.get('/profile', auth, async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id).select('-password');
+        res.json(user);
+    } catch (error) {
+        logError(error, req);
+        res.status(500).json({ message: 'Error fetching profile' });
+    }
 });
 
-// ADMIN DASHBOARD ROUTE
-authRouter.get("/admin-dashboard", adminAuth, (req, res) => {
-    res.json({ message: "Welcome to the Admin Dashboard" });
+// Update user profile
+router.patch('/profile', auth, async (req, res) => {
+    const updates = Object.keys(req.body);
+    const allowedUpdates = ['name', 'email', 'password'];
+    const isValidOperation = updates.every(update => allowedUpdates.includes(update));
+
+    if (!isValidOperation) {
+        return res.status(400).json({ message: 'Invalid updates' });
+    }
+
+    try {
+        updates.forEach(update => req.user[update] = req.body[update]);
+        await req.user.save();
+
+        logActivity('User profile updated', req);
+        res.json(req.user);
+    } catch (error) {
+        logError(error, req);
+        res.status(500).json({ message: 'Error updating profile' });
+    }
 });
 
+// Get all users (admin only)
+router.get('/', auth, checkRole(['admin']), async (req, res) => {
+    try {
+        const users = await User.find().select('-password');
+        res.json(users);
+    } catch (error) {
+        logError(error, req);
+        res.status(500).json({ message: 'Error fetching users' });
+    }
+});
 
-module.exports = authRouter;
+// Update user status (admin only)
+router.patch('/:id/status', auth, checkRole(['admin']), async (req, res) => {
+    try {
+        const user = await User.findById(req.params.id);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        user.isActive = req.body.isActive;
+        await user.save();
+
+        logActivity(`User status updated: ${user._id}`, req);
+        res.json(user);
+    } catch (error) {
+        logError(error, req);
+        res.status(500).json({ message: 'Error updating user status' });
+    }
+});
+
+module.exports = router;

@@ -1,31 +1,59 @@
-const mongoose = require("mongoose");
+const mongoose = require('mongoose');
 
-const ImageSchema = new mongoose.Schema({
-  institutionId: { 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: "Institution", 
-    required: true 
-  },
-  imageUrl: { 
-    type: String, 
-    required: true, 
-    match: /\.(jpg|jpeg|png|gif)$/i  
-  },
-  uploadedAt: { 
-    type: Date, 
-    default: Date.now 
-  },
-  description: { 
-    type: String, 
-    default: "" 
-  },
-  analysisResult: {
-    peopleCount: { type: Number, min: 0, default: 0 }, 
-    engagementScore: { type: Number, min: 0, max: 100, default: 0 }, 
-    flagged: { type: Boolean, default: false }, 
-    reason: { type: String, default: "" }
-}
-
+const imageSchema = new mongoose.Schema({
+    institution: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Institution',
+        required: true
+    },
+    uploadedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: true
+    },
+    imageUrl: {
+        type: String,
+        required: true
+    },
+    analysisResult: {
+        basicMetrics: {
+            engagementScore: Number,
+            flagged: Boolean
+        },
+        detailedAnalysis: {
+            studentCount: Number,
+            activityType: String,
+            detectedObjects: [String],
+            safetyIssues: [String],
+            attendance: {
+                present: Number,
+                total: Number
+            }
+        }
+    },
+    metadata: {
+        fileName: String,
+        fileSize: Number,
+        mimeType: String,
+        dimensions: {
+            width: Number,
+            height: Number
+        }
+    },
+    tags: [String],
+    status: {
+        type: String,
+        enum: ['processing', 'completed', 'failed'],
+        default: 'processing'
+    }
+}, {
+    timestamps: true
 });
 
-module.exports = mongoose.model("Image", ImageSchema);
+// Index for faster queries
+imageSchema.index({ institution: 1, createdAt: -1 });
+imageSchema.index({ uploadedBy: 1, createdAt: -1 });
+
+const Image = mongoose.model('Image', imageSchema);
+
+module.exports = Image; 
