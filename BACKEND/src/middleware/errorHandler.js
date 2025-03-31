@@ -5,6 +5,7 @@ const Image = require('../models/Image');
 const { auth } = require('../middleware/auth');
 const { analyzeClassroomImage } = require('../utils/imageAnalysis');
 const { logActivity, logError } = require('../utils/logger');
+const logger = require('../utils/logger');
 
 // Configure multer for image upload
 const storage = multer.memoryStorage();
@@ -109,69 +110,123 @@ router.delete('/:id', auth, async (req, res) => {
     }
 });
 
-class AnalysisError extends Error {
-    constructor(message, type, details = {}) {
+// Custom error class
+class AppError extends Error {
+    constructor(message, statusCode) {
         super(message);
-        this.name = 'AnalysisError';
-        this.type = type;
-        this.details = details;
+        this.statusCode = statusCode;
+        this.status = `${statusCode}`.startsWith('4') ? 'fail' : 'error';
+        this.isOperational = true;
+
+        Error.captureStackTrace(this, this.constructor);
     }
 }
 
-const analysisErrorHandler = (err, req, res, next) => {
-    if (err instanceof AnalysisError) {
-        logError('Analysis Error', {
-            type: err.type,
-            details: err.details,
-            userId: req.user?.id,
-            imageId: req.body?.imageId
-        });
+// Main error handling middleware
+const errorHandler = (err, req, res, next) => {
+    err.statusCode = err.statusCode || 500;
+    err.status = err.status || 'error';
 
-        return res.status(400).json({
-            error: true,
-            message: err.message
-        });
-    }
+    // Log error
+    logger.logError('Error occurred:', {
+        error: err,
+        path: req.path,
+        method: req.method,
+        body: req.body,
+        user: req.user?._id
+    });
 
-    logError(err, req);
-
+    // Handle different types of errors
     if (err.name === 'ValidationError') {
-        return res.status(400).json({
-            message: 'Validation Error',
-            errors: Object.values(err.errors).map(error => error.message)
-        });
-    }
-
-    if (err.name === 'MulterError') {
-        return res.status(400).json({
-            message: 'File Upload Error',
-            error: err.message
-        });
+        return handleValidationError(err, res);
     }
 
     if (err.name === 'CastError') {
-        return res.status(400).json({
-            message: 'Invalid ID format'
-        });
+        return handleCastError(err, res);
+    }
+
+    if (err.code === 11000) {
+        return handleDuplicateKeyError(err, res);
     }
 
     if (err.name === 'JsonWebTokenError') {
-        return res.status(401).json({
-            message: 'Invalid token'
-        });
+        return handleJWTError(res);
     }
 
     if (err.name === 'TokenExpiredError') {
-        return res.status(401).json({
-            message: 'Token expired'
+        return handleJWTExpiredError(res);
+    }
+
+    // Handle multer errors
+    if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({
+            success: false,
+            message: 'File too large'
         });
     }
 
-    // Default error
-    res.status(500).json({
-        message: 'Internal Server Error',
-        error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    // Production vs Development error response
+    if (process.env.NODE_ENV === 'production') {
+        // Only send operational errors to client
+        if (err.isOperational) {
+            return res.status(err.statusCode).json({
+                success: false,
+                message: err.message
+            });
+        }
+        // For programming or unknown errors, send generic message
+        return res.status(500).json({
+            success: false,
+            message: 'Something went wrong'
+        });
+    }
+
+    // Development error response with full error details
+    return res.status(err.statusCode).json({
+        success: false,
+        message: err.message,
+        error: err,
+        stack: err.stack
     });
 };
 
-module.exports = { router, errorHandler: analysisErrorHandler };
+// Helper functions for specific errors
+const handleValidationError = (err, res) => {
+    const errors = Object.values(err.errors).map(error => error.message);
+    return res.status(400).json({
+        success: false,
+        message: 'Validation Error',
+        errors
+    });
+};
+
+const handleCastError = (err, res) => {
+    return res.status(400).json({
+        success: false,
+        message: `Invalid ${err.path}: ${err.value}`
+    });
+};
+
+const handleDuplicateKeyError = (err, res) => {
+    const field = Object.keys(err.keyValue)[0];
+    return res.status(400).json({
+        success: false,
+        message: `${field} already exists`
+    });
+};
+
+const handleJWTError = (res) => {
+    return res.status(401).json({
+        success: false,
+        message: 'Invalid token'
+    });
+};
+
+const handleJWTExpiredError = (res) => {
+    return res.status(401).json({
+        success: false,
+        message: 'Token expired'
+    });
+};
+
+module.exports = { router, errorHandler, AppError };
