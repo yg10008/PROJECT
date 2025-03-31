@@ -5,7 +5,10 @@ const { AppError } = require('./errorHandler');
 const validate = (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-        throw new AppError('Validation failed', 400);
+        return res.status(400).json({
+            status: 'error',
+            errors: errors.array()
+        });
     }
     next();
 };
@@ -63,11 +66,21 @@ const validateCurriculum = [
     validate
 ];
 
+// Performance validation rules
+const performanceValidationRules = [
+    body('studentId').notEmpty().withMessage('Student ID is required'),
+    body('engagementScore').isFloat({ min: 0, max: 100 }).withMessage('Invalid engagement score'),
+    body('date').isISO8601().withMessage('Invalid date format'),
+    validate
+];
+
 module.exports = {
     validateSignup,
     validateLogin,
     validateImage,
     validatePerformance,
     validateInstitution,
-    validateCurriculum
+    validateCurriculum,
+    validate,
+    performanceValidationRules
 }; 

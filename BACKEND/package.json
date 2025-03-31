@@ -20,6 +20,7 @@
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
+    "express-validator": "^7.2.1",
     "form-data": "^4.0.0",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
@@ -28,7 +29,8 @@
     "multer": "^1.4.5-lts.2",
     "nodemailer": "^6.9.12",
     "nodemon": "^3.1.9",
-    "winston": "^3.11.0"
+    "winston": "^3.17.0",
+    "winston-daily-rotate-file": "^5.0.0"
   },
   "devDependencies": {
     "jest": "^29.7.0"

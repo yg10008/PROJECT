@@ -1,21 +1,26 @@
 const winston = require('winston');
+require('winston-daily-rotate-file');
 const path = require('path');
-const DailyRotateFile = require('winston-daily-rotate-file');
 
-const logLevel = process.env.LOG_LEVEL || 'info';
+// Create logs directory path properly
+const logDir = path.join(__dirname, '../../logs');
 
-// Define log formats
-const logFormat = winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.json()
-);
-
-// Create separate loggers for different types of logs
-const activityLogger = winston.createLogger({
-    format: logFormat,
+const logger = winston.createLogger({
+    level: 'info',
+    format: winston.format.combine(
+        winston.format.timestamp(),
+        winston.format.json()
+    ),
     transports: [
-        new DailyRotateFile({
-            filename: path.join(__dirname, '../../logs/activity-%DATE%.log'),
+        new winston.transports.DailyRotateFile({
+            filename: path.join(logDir, 'error-%DATE%.log'),
+            datePattern: 'YYYY-MM-DD',
+            level: 'error',
+            maxSize: '20m',
+            maxFiles: '14d'
+        }),
+        new winston.transports.DailyRotateFile({
+            filename: path.join(logDir, 'combined-%DATE%.log'),
             datePattern: 'YYYY-MM-DD',
             maxSize: '20m',
             maxFiles: '14d'
@@ -23,77 +28,29 @@ const activityLogger = winston.createLogger({
     ]
 });
 
-const errorLogger = winston.createLogger({
-    format: logFormat,
-    transports: [
-        new DailyRotateFile({
-            filename: path.join(__dirname, '../../logs/error-%DATE%.log'),
-            datePattern: 'YYYY-MM-DD',
-            maxSize: '20m',
-            maxFiles: '30d'
-        })
-    ]
-});
-
-const apiLogger = winston.createLogger({
-    format: logFormat,
-    transports: [
-        new DailyRotateFile({
-            filename: path
-        })
-    ]
-});
-
-// Add console transport in non-production environments
+// Add console transport in development
 if (process.env.NODE_ENV !== 'production') {
-    activityLogger.add(new winston.transports.Console({
-        format: winston.format.simple()
-    }));
-    errorLogger.add(new winston.transports.Console({
-        format: winston.format.simple()
-    }));
-    apiLogger.add(new winston.transports.Console({
+    logger.add(new winston.transports.Console({
         format: winston.format.simple()
     }));
 }
 
-const logError = (error, req = null) => {
-    const logData = {
-        message: error.message,
-        stack: error.stack,
-        timestamp: new Date().toISOString()
-    };
-
-    if (req) {
-        logData.method = req.method;
-        logData.url = req.url;
-        logData.ip = req.ip;
-        logData.userId = req.user ? req.user._id : null;
-    }
-
-    errorLogger.error(logData);
-};
-
-const logActivity = (message, req = null) => {
-    const logData = {
-        message,
-        timestamp: new Date().toISOString()
-    };
-
-    if (req) {
-        logData.method = req.method;
-        logData.url = req.url;
-        logData.ip = req.ip;
-        logData.userId = req.user ? req.user._id : null;
-    }
-
-    activityLogger.info(logData);
-};
-
 module.exports = {
-    activityLogger,
-    errorLogger,
-    apiLogger,
-    logError,
-    logActivity
+    logger,
+    logError: (message, error) => {
+        logger.error({
+            message,
+            error: {
+                name: error.name,
+                message: error.message,
+                stack: error.stack
+            }
+        });
+    },
+    logActivity: (message, data = {}) => {
+        logger.info({
+            message,
+            ...data
+        });
+    }
 }; 

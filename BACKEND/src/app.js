@@ -8,8 +8,17 @@ const morgan = require("morgan");
 const { connectDB } = require("./config/database");
 const { logger } = require("./utils/logger");
 const mongoose = require("mongoose");
+const fs = require('fs');
+const path = require('path');
+const errorHandler = require('./middleware/errorHandler');
 
 const app = express();
+
+// Create logs directory if it doesn't exist
+const logDir = path.join(__dirname, '../logs');
+if (!fs.existsSync(logDir)) {
+    fs.mkdirSync(logDir, { recursive: true });
+}
 
 // Security middleware
 app.use(helmet());
@@ -26,8 +35,7 @@ const imageRoutes = require("./routes/imageRoutes");
 const authRoutes = require("./routes/userRoutes");
 const curriculumRoutes = require("./routes/curriculumRoutes");
 const performanceRoutes = require("./routes/performanceRoutes");
-const logRoutes = require("./routes/logs");
-const errorHandler = require('./middleware/errorHandler');
+// const logsRouter = require('./routes/logs');  // This line is causing the error
 
 // API Routes
 app.use("/api/institutions", institutionRoutes);
@@ -35,14 +43,14 @@ app.use("/api/images", imageRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/curriculum", curriculumRoutes);
 app.use("/api/performance", performanceRoutes);
-app.use("/api/logs", logRoutes);
+// app.use('/api/logs', logsRouter);
 
 // Health check route
 app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date() });
 });
 
-// Error handling
+// Error handler should be the last middleware
 app.use(errorHandler);
 
 // 404 handler
