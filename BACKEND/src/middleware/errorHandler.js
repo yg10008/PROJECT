@@ -109,7 +109,30 @@ router.delete('/:id', auth, async (req, res) => {
     }
 });
 
-const errorHandler = (err, req, res, next) => {
+class AnalysisError extends Error {
+    constructor(message, type, details = {}) {
+        super(message);
+        this.name = 'AnalysisError';
+        this.type = type;
+        this.details = details;
+    }
+}
+
+const analysisErrorHandler = (err, req, res, next) => {
+    if (err instanceof AnalysisError) {
+        logError('Analysis Error', {
+            type: err.type,
+            details: err.details,
+            userId: req.user?.id,
+            imageId: req.body?.imageId
+        });
+
+        return res.status(400).json({
+            error: true,
+            message: err.message
+        });
+    }
+
     logError(err, req);
 
     if (err.name === 'ValidationError') {
@@ -151,4 +174,4 @@ const errorHandler = (err, req, res, next) => {
     });
 };
 
-module.exports = { router, errorHandler };
+module.exports = { router, errorHandler: analysisErrorHandler };
