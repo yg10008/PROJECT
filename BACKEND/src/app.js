@@ -11,6 +11,8 @@ const mongoose = require("mongoose");
 const fs = require('fs');
 const path = require('path');
 const errorHandler = require('./middleware/errorHandler');
+const { auth } = require('./middleware/auth');
+const { validate } = require('./middleware/validators');
 
 const app = express();
 
@@ -27,7 +29,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use(cors());
 app.use(cookieParser());
 app.use(compression());
-app.use(morgan('combined'));
+app.use(morgan('dev'));
 
 // Routes
 const institutionRoutes = require("./routes/institutionRoutes");

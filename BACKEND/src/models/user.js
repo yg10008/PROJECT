@@ -3,11 +3,6 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
 const userSchema = new mongoose.Schema({
-    name: {
-        type: String,
-        required: true,
-        trim: true
-    },
     email: {
         type: String,
         required: true,
@@ -20,10 +15,25 @@ const userSchema = new mongoose.Schema({
         required: true,
         minlength: 6
     },
+    name: {
+        type: String,
+        required: true,
+        trim: true
+    },
     role: {
         type: String,
-        enum: ['admin', 'institution_admin', 'teacher'],
+        enum: ['admin', 'teacher', 'institution'],
         default: 'teacher'
+    },
+    tokens: [{
+        type: String
+    }],
+    lastLogin: {
+        type: Date
+    },
+    isVerified: {
+        type: Boolean,
+        default: false
     },
     institution: {
         type: mongoose.Schema.Types.ObjectId,
@@ -33,7 +43,6 @@ const userSchema = new mongoose.Schema({
         type: Boolean,
         default: true
     },
-    lastLogin: Date,
     loginHistory: [{
         timestamp: Date,
         ip: String,
@@ -59,30 +68,41 @@ const userSchema = new mongoose.Schema({
     timestamps: true
 });
 
-// Password hashing middleware
+// Hash password before saving
 userSchema.pre('save', async function(next) {
-    if (!this.isModified('password')) return next();
-    
-    try {
-        const salt = await bcrypt.genSalt(10);
-        this.password = await bcrypt.hash(this.password, salt);
-        next();
-    } catch (error) {
-        next(error);
+    const user = this;
+    if (user.isModified('password')) {
+        user.password = await bcrypt.hash(user.password, 10);
     }
+    next();
 });
 
-// Generate JWT token
-userSchema.methods.generateAuthToken = function() {
-    return jwt.sign(
-        { 
-            id: this._id,
-            role: this.role,
-            institution: this.institution
-        },
+// Generate auth token
+userSchema.methods.generateAuthToken = async function() {
+    const user = this;
+    const token = jwt.sign(
+        { userId: user._id.toString() },
         process.env.JWT_SECRET,
         { expiresIn: '7d' }
     );
+    
+    user.tokens.push(token);
+    await user.save();
+    
+    return token;
+};
+
+// Check if token is valid
+userSchema.methods.isTokenValid = function(token) {
+    return this.tokens.includes(token);
+};
+
+// Remove sensitive data when converting to JSON
+userSchema.methods.toJSON = function() {
+    const user = this.toObject();
+    delete user.password;
+    delete user.tokens;
+    return user;
 };
 
 // Compare password method
@@ -106,4 +126,5 @@ userSchema.methods.updateLoginHistory = function(ip, userAgent) {
 };
 
 const User = mongoose.model('User', userSchema);
-module.exports = User; 
+
+module.exports = { User }; 
